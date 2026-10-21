@@ -59,3 +59,34 @@ jobs:
         with:
           name: coverage-${{ matrix.python-version }}
           path: coverage.xml
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install bandit pip-audit
+
+      - name: bandit
+        run: bandit -r app/ -ll
+
+      - name: pip-audit
+        run: pip-audit
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
