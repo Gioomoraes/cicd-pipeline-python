@@ -36,9 +36,11 @@ jobs:
           IMAGE="ghcr.io/${{ github.repository }}"
           echo "name=${IMAGE,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Compute short SHA
+       - name: Compute short SHA
         id: sha
-        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: echo "short=${HEAD_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Build image (load, no push)
         uses: docker/build-push-action@v6
@@ -55,7 +57,7 @@ jobs:
           push: false
 
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+              uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ steps.image.outputs.name }}:${{ steps.sha.outputs.short }}
           severity: CRITICAL,HIGH

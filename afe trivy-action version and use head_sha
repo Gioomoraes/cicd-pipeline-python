@@ -1,0 +1,3 @@
+[33m03003e5[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m ci: add docker build, trivy scan and GHCR publish
+[33m6856359[m Merge pull request #6 from Gioomoraes/dependabot/pip/uvicorn-0.54.0
+[33m02bbe11[m Merge pull request #2 from Gioomoraes/dependabot/github_actions/gitleaks/gitleaks-action-3
