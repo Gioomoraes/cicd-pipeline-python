@@ -47,6 +47,8 @@ jobs:
 
       - name: Create kind cluster
         uses: helm/kind-action@v1
+        with:
+          cluster_name: kind
 
       - name: Load image into kind
         run: kind load docker-image "$IMAGE:$SHORT_SHA"
@@ -121,6 +123,8 @@ jobs:
 
       - name: Create kind cluster
         uses: helm/kind-action@v1
+        with:
+          cluster_name: kind
 
       - name: Load image into kind
         run: kind load docker-image "$IMAGE:$SHORT_SHA"
