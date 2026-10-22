@@ -1,0 +1,164 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["Build"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Compute SHORT_SHA and IMAGE
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "SHORT_SHA=${HEAD_SHA::7}" >> "$GITHUB_ENV"
+          IMAGE="ghcr.io/${REPOSITORY}"
+          echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: docker pull "$IMAGE:$SHORT_SHA"
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+
+      - name: Load image into kind
+        run: kind load docker-image "$IMAGE:$SHORT_SHA"
+
+      - name: Apply manifests to staging
+        run: |
+          kubectl create namespace staging --dry-run=client -o yaml | kubectl apply -f -
+          sed "s/IMAGE_TAG/$SHORT_SHA/g" k8s/deployment.yaml | kubectl apply -n staging -f -
+          sed "s/IMAGE_TAG/$SHORT_SHA/g" k8s/service.yaml   | kubectl apply -n staging -f -
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/cicd-app -n staging --timeout=120s
+
+      - name: Smoke test
+        run: |
+          kubectl port-forward svc/cicd-app 8080:80 -n staging &
+          PF_PID=$!
+          echo "Port-forward PID: $PF_PID"
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "Port-forward ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          python scripts/smoke_test.py \
+            --url http://localhost:8080 \
+            --expected-version "$SHORT_SHA"
+          kill $PF_PID || true
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "=== kubectl describe pods ==="
+          kubectl describe pods -n staging
+          echo "=== kubectl logs ==="
+          kubectl logs -l app=cicd-app -n staging --tail=50 || true
+          echo "=== kubectl rollout undo ==="
+          kubectl rollout undo deployment/cicd-app -n staging \
+            && echo "Rollback issued." \
+            || echo "No previous revision to roll back to."
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Compute SHORT_SHA and IMAGE
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "SHORT_SHA=${HEAD_SHA::7}" >> "$GITHUB_ENV"
+          IMAGE="ghcr.io/${REPOSITORY}"
+          echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: docker pull "$IMAGE:$SHORT_SHA"
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+
+      - name: Load image into kind
+        run: kind load docker-image "$IMAGE:$SHORT_SHA"
+
+      - name: Apply manifests to production
+        run: |
+          kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
+          sed "s/IMAGE_TAG/$SHORT_SHA/g" k8s/deployment.yaml | kubectl apply -n production -f -
+          sed "s/IMAGE_TAG/$SHORT_SHA/g" k8s/service.yaml   | kubectl apply -n production -f -
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/cicd-app -n production --timeout=120s
+
+      - name: Smoke test
+        run: |
+          kubectl port-forward svc/cicd-app 8080:80 -n production &
+          PF_PID=$!
+          echo "Port-forward PID: $PF_PID"
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "Port-forward ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          python scripts/smoke_test.py \
+            --url http://localhost:8080 \
+            --expected-version "$SHORT_SHA"
+          kill $PF_PID || true
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "=== kubectl describe pods ==="
+          kubectl describe pods -n production
+          echo "=== kubectl logs ==="
+          kubectl logs -l app=cicd-app -n production --tail=50 || true
+          echo "=== kubectl rollout undo ==="
+          kubectl rollout undo deployment/cicd-app -n production \
+            && echo "Rollback issued." \
+            || echo "No previous revision to roll back to."
