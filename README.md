@@ -39,13 +39,13 @@ pytest --cov=app --cov-fail-under=80
 APP_VERSION=dev uvicorn app.main:app --port 8000
 ```
 
-In another terminal, run the same smoke test the pipeline uses:
+Em outro terminal, execute o mesmo teste de fumaça usado no gasoduto:
 
 ```bash
 python scripts/smoke_test.py --url http://localhost:8000 --expected-version dev
 ```
 
-With Docker installed:
+Com Docker instalado:
 
 ```bash
 docker compose up
