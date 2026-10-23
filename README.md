@@ -114,31 +114,4 @@ With Docker installed:
 docker compose up
 ```
 
-## Challenges and lessons learned
-
-Most of the AI-generated files needed a human review, and the pipeline itself caught the problems. These are the ones worth remembering.
-
-- **Invalid build backend.** The generated `pyproject.toml` pointed to a build backend that does not exist, so `pip install` failed in CI. I reproduced it locally in a virtual environment and fixed the `[build-system]` block.
-- **Python version mismatch.** `requires-python` said 3.12 while the CI matrix also tested 3.11, and pip refused to install on 3.11. I aligned both so the matrix keeps testing two versions.
-- **The dependency scan found real vulnerabilities.** `pip-audit` reported 28 advisories across three packages (pip, pytest, starlette). Fixing starlette required upgrading FastAPI, because the pinned FastAPI version capped starlette below the fixed range. The pins in `pyproject.toml` were updated and the audit now passes.
-- **Dependabot PRs need judgement.** CI was green on every PR, but the `uvicorn` bump was a big jump and the test client never starts a real server, so I started the app manually before merging it.
-- **Supply-chain awareness.** The agent suggested an old Trivy action tag. That tag range was affected by a supply-chain incident in the action's repository and the tag no longer resolved. I switched to a version the maintainers state was not compromised. Pinning actions by full commit SHA is the stricter next step.
-- **YAML indentation can invalidate a whole workflow.** One misplaced space made GitHub reject `build.yml` and show a failed run with no jobs. Validating the file locally with a YAML parser pointed to the exact line.
-- **Lint caught a generated script.** The smoke test script broke the project's line-length rule, and CI blocked the pipeline before any image was built.
-- **Cluster name mismatch.** `kind load` looked for a cluster named `kind`, while the kind action created one with a different default name. Setting `cluster_name` explicitly fixed it.
-
-I built this with an AI coding agent on a small monthly credit budget. Prompts were scoped to one deliverable each, and failing CI logs were debugged outside the agent. The rules given to the agent are in `.kiro/steering/`.
-
-## Limitations
-
-- **The deploy is a simulation.** Staging and production run on an ephemeral `kind` cluster created inside the job and destroyed when it ends. There is no public URL. The production job deploys the same image into a fresh cluster rather than promoting a running staging environment.
-- **Rollback is demonstrative.** `kubectl rollout undo` shows the mechanism, but it cannot protect a real environment here because the cluster does not outlive the job.
-- **One push at a time.** The deploy workflow derives the image tag from the commit of the triggering run. Two pushes in quick succession could make the tags diverge and the image pull fail.
-- **Actions are pinned by tag, not by SHA.**
-
-## What's next
-
-- Provision real infrastructure with Terraform and deploy to a managed Kubernetes cluster.
-- Move to GitOps with ArgoCD.
-- Add Prometheus and Grafana for metrics and alerts.
-- Pin third-party actions by commit SHA.
+## Author - Giovanna Moraes 💜
