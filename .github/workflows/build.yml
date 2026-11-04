@@ -57,7 +57,7 @@ jobs:
           push: false
 
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.image.outputs.name }}:${{ steps.sha.outputs.short }}
           severity: CRITICAL,HIGH
